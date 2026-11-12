@@ -23,8 +23,10 @@
   - 头文件：[`intrusive_list.h`](https://github.com/YandereChan2/intrusive_list/blob/main/intrusive_list.h)
   - 文档：[`intrusive_list_readme/intrusive_list.md`](https://github.com/YandereChan2/intrusive_list/blob/main/doc/intrusive_list_readme/intrusive_list.md)
 
-本仓库用 git submodule 引用它（`intrusive_list/`）。克隆后需要初始化子模块，并把该目录加入
-头文件搜索路径。
+本库**不固定依赖版本**，始终使用最新版本：
+
+- CMake 配置时从 `main` 分支下载最新版（见 [CMakeLists.txt](CMakeLists.txt)）；
+- 手动构建时 `git clone` 该仓库的最新代码即可（见下文构建测试）。
 
 # 文件
 
@@ -32,8 +34,8 @@
 |---|---|
 | [`list_without_size.h`](list_without_size.h) | 容器实现 |
 | [`test_list_without_size.cpp`](test_list_without_size.cpp) | 自测：与 `std::list` 的随机差分、异常安全、分配器、缀饰指针 |
+| [`CMakeLists.txt`](CMakeLists.txt) | 构建与测试；配置时获取最新依赖 |
 | [`doc/list_without_size_readme/`](doc/list_without_size_readme/list_without_size.md) | 使用文档 |
-| `intrusive_list/` | 依赖（git submodule） |
 
 # 快速开始
 
@@ -68,25 +70,22 @@ int main()
 
 # 构建测试
 
-先取回依赖：
-
-```bat
-git submodule update --init
-```
-
-使用 MSVC（C++23）：
-
-```bat
-cl /nologo /std:c++latest /EHsc /W4 /utf-8 /I . /I intrusive_list test_list_without_size.cpp
-test_list_without_size.exe
-```
-
-使用 CMake：
+使用 CMake（配置时自动获取最新依赖，无需子模块）：
 
 ```bat
 cmake -S . -B build
 cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
+```
+
+需要强制更新到依赖的最新版本时，删除 `build` 目录重新配置（或使用 `cmake --fresh`）。
+
+使用 MSVC（C++23）手动构建时，先取最新依赖：
+
+```bat
+git clone https://github.com/YandereChan2/intrusive_list.git
+cl /nologo /std:c++latest /EHsc /W4 /utf-8 /I . /I intrusive_list test_list_without_size.cpp
+test_list_without_size.exe
 ```
 
 预期输出：
