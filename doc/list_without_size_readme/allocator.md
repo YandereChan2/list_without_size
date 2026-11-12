@@ -46,6 +46,11 @@ sizeof(Yc::list_without_size<int>);   // 一个哨兵：两个指针
 分配器对节点的 `pointer` 必须等于 `pointer_traits<Alloc::void_pointer>::rebind<节点类型>`；
 不满足时编译期 `static_assert` 报错。
 
+> 注意：如果缀饰指针是"自相对"的（拷贝构造的结果依赖对象自身地址，例如
+> `boost::interprocess::offset_ptr` 一类实现），MSVC 14.5x 在 `/O2` 下内联其
+> 拷贝构造 / 赋值时存在代码生成缺陷。本库的测试对这类指针禁用了相关成员的内联，
+> 见 [`test_list_without_size.cpp`](../../test_list_without_size.cpp)。
+
 ## 示例
 
 ```C++

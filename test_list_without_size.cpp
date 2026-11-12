@@ -1,3 +1,7 @@
+// 测试的全部检查都在 assert 里；Release（NDEBUG）下也要生效，否则等于不测
+#ifdef NDEBUG
+#  undef NDEBUG
+#endif
 #include "list_without_size.h"
 
 #include <algorithm>
@@ -237,6 +241,16 @@ struct fancy_allocator
 
 // 更"真实"的缀饰指针：内部存的是"相对自身地址的偏移"。一旦实现里把缀饰指针
 // 偷偷换成原始地址（或在拷贝/移动时按位复制），结果就会错。
+//
+// 注意：MSVC 14.5x 在 /O2 下内联"拷贝构造依赖 this 地址"的类型时会生成错误代码
+// （把复制当成按位复制），所以这里对这类成员禁用内联，以继续在 Release 下验证
+// 自相对指针。指针类型本身的语义与 boost::interprocess::offset_ptr 一致。
+#if defined(_MSC_VER)
+#  define YC_TEST_OFFSET_PTR_NOINLINE __declspec(noinline)
+#else
+#  define YC_TEST_OFFSET_PTR_NOINLINE
+#endif
+
 template<class T>
 class offset_ptr
 {
@@ -257,10 +271,12 @@ public:
 
     offset_ptr() = default;
     explicit offset_ptr(T* p) noexcept : offset_(diff(p, this)) {}
-    offset_ptr(const offset_ptr& o) noexcept : offset_(diff(o.get(), this)) {}
+    YC_TEST_OFFSET_PTR_NOINLINE offset_ptr(const offset_ptr& o) noexcept
+        : offset_(diff(o.get(), this)) {}
     template<class U, std::enable_if_t<std::is_convertible_v<U*, T*>, int> = 0>
-    offset_ptr(const offset_ptr<U>& o) noexcept : offset_(diff(o.get(), this)) {}
-    offset_ptr& operator=(const offset_ptr& o) noexcept
+    YC_TEST_OFFSET_PTR_NOINLINE offset_ptr(const offset_ptr<U>& o) noexcept
+        : offset_(diff(o.get(), this)) {}
+    YC_TEST_OFFSET_PTR_NOINLINE offset_ptr& operator=(const offset_ptr& o) noexcept
     {
         offset_ = diff(o.get(), this);
         return *this;
