@@ -242,15 +242,9 @@ struct fancy_allocator
 // 更"真实"的缀饰指针：内部存的是"相对自身地址的偏移"。一旦实现里把缀饰指针
 // 偷偷换成原始地址（或在拷贝/移动时按位复制），结果就会错。
 //
-// 注意：MSVC 14.5x 在 /O2 下内联"拷贝构造依赖 this 地址"的类型时会生成错误代码
-// （把复制当成按位复制），所以这里对这类成员禁用内联，以继续在 Release 下验证
-// 自相对指针。指针类型本身的语义与 boost::interprocess::offset_ptr 一致。
-#if defined(_MSC_VER)
-#  define YC_TEST_OFFSET_PTR_NOINLINE __declspec(noinline)
-#else
-#  define YC_TEST_OFFSET_PTR_NOINLINE
-#endif
-
+// 注意：偏移的换算必须用整型算术（uintptr_t），不能用 char* 指针加减——
+// 让指针指向 offset_ptr 对象之外是未定义行为，优化器可以据此推出错误结论。
+// 真实的自相对指针实现（如 boost::interprocess::offset_ptr）同样用整型算术。
 template<class T>
 class offset_ptr
 {
@@ -258,10 +252,11 @@ class offset_ptr
     static constexpr std::ptrdiff_t null_offset = 1;
     std::ptrdiff_t offset_ = null_offset;
 
-    char* self() const noexcept { return const_cast<char*>(reinterpret_cast<const char*>(this)); }
     static std::ptrdiff_t diff(const void* p, const void* base) noexcept
     {
-        return p ? static_cast<const char*>(p) - static_cast<const char*>(base) : null_offset;
+        return p ? static_cast<std::ptrdiff_t>(
+            reinterpret_cast<std::uintptr_t>(p) - reinterpret_cast<std::uintptr_t>(base))
+            : null_offset;
     }
 public:
     using element_type = T;
@@ -271,12 +266,10 @@ public:
 
     offset_ptr() = default;
     explicit offset_ptr(T* p) noexcept : offset_(diff(p, this)) {}
-    YC_TEST_OFFSET_PTR_NOINLINE offset_ptr(const offset_ptr& o) noexcept
-        : offset_(diff(o.get(), this)) {}
+    offset_ptr(const offset_ptr& o) noexcept : offset_(diff(o.get(), this)) {}
     template<class U, std::enable_if_t<std::is_convertible_v<U*, T*>, int> = 0>
-    YC_TEST_OFFSET_PTR_NOINLINE offset_ptr(const offset_ptr<U>& o) noexcept
-        : offset_(diff(o.get(), this)) {}
-    YC_TEST_OFFSET_PTR_NOINLINE offset_ptr& operator=(const offset_ptr& o) noexcept
+    offset_ptr(const offset_ptr<U>& o) noexcept : offset_(diff(o.get(), this)) {}
+    offset_ptr& operator=(const offset_ptr& o) noexcept
     {
         offset_ = diff(o.get(), this);
         return *this;
@@ -284,7 +277,9 @@ public:
 
     T* get() const noexcept
     {
-        return offset_ == null_offset ? nullptr : static_cast<T*>(static_cast<void*>(self() + offset_));
+        return offset_ == null_offset ? nullptr
+            : reinterpret_cast<T*>(reinterpret_cast<std::uintptr_t>(this)
+                + static_cast<std::uintptr_t>(offset_));
     }
     T& operator*() const noexcept { return *get(); }
     T* operator->() const noexcept { return get(); }
@@ -292,14 +287,18 @@ public:
 
     offset_ptr& operator++() noexcept
     {
-        T* p = get();
-        offset_ = p ? diff(p + 1, this) : null_offset;
+        if (offset_ != null_offset)
+        {
+            offset_ += static_cast<std::ptrdiff_t>(sizeof(T));
+        }
         return *this;
     }
     offset_ptr& operator--() noexcept
     {
-        T* p = get();
-        offset_ = p ? diff(p - 1, this) : null_offset;
+        if (offset_ != null_offset)
+        {
+            offset_ -= static_cast<std::ptrdiff_t>(sizeof(T));
+        }
         return *this;
     }
 
